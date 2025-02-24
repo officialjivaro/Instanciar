@@ -9,7 +9,7 @@ from appdata.gui.main_window import MainWindow
 from appdata.version.version import VERSION as LOCAL_VERSION
 
 def check_for_updates():
-    url = "https://raw.githubusercontent.com/officialjivaro/instanciar/main/appdata/version/version.py"
+    url = "https://raw.githubusercontent.com/officialjivaro/Instanciar/main/appdata/version/version.py"
     try:
         with urllib.request.urlopen(url) as response:
             data = response.read().decode("utf-8")
