@@ -1,4 +1,4 @@
-# appdata/gui/instance_editor.py
+# appdata/gui/instance_manager.py
 from PySide6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QCheckBox, QComboBox
 from PySide6.QtGui import QPalette, QColor
 from PySide6.QtCore import Qt
@@ -13,7 +13,7 @@ class GuiInstanceManager(QDialog):
         self.setModal(True)
         self.manager = manager
         self.instance_name = instance_name
-        self.setWindowTitle("Instance Editor")
+        self.setWindowTitle("Instance Manager")
         self.layout = QVBoxLayout()
         self.setLayout(self.layout)
         self.name_label = QLabel("Instance Name")

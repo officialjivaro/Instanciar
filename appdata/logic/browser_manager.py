@@ -20,38 +20,38 @@ except ImportError:
 
 class BrowserManager:
     def launch(self, instance, browser, block_scripts):
-        f_id = instance["folder_id"]
-        u = os.path.expanduser("~")
-        base = os.path.join(u, "Jivaro", "Instanciar", "instances")
-        path = os.path.join(base, f_id)
-        if not os.path.exists(path):
-            os.makedirs(path)
+        fid = instance["folder_id"]
+        user_folder = os.path.expanduser("~")
+        base_path = os.path.join(user_folder, "Jivaro", "Instanciar", "instances")
+        instance_path = os.path.join(base_path, fid)
+        if not os.path.exists(instance_path):
+            os.makedirs(instance_path)
         hwid_info = None
         if "hwid" in instance and instance["hwid"].get("enabled"):
-            hwid_file = os.path.join(path, "hwid.txt")
+            hwid_file = os.path.join(instance_path, "hwid.txt")
             if not os.path.exists(hwid_file):
                 hwid_txt = ''.join(random.choices(string.ascii_letters + string.digits, k=32))
                 with open(hwid_file, "w", encoding="utf-8") as f:
                     f.write(hwid_txt)
             with open(hwid_file, "r", encoding="utf-8") as f:
                 hwid_info = f.read().strip()
-        if browser.lower() == "safari":
+        b = browser.lower()
+        if b == "safari":
             if SAFARI_AVAILABLE and platform.system().lower() == "darwin":
-                self.launch_safari(instance, block_scripts, hwid_info, path)
+                self.launch_safari(instance, instance_path, block_scripts, hwid_info)
             else:
-                self.launch_chrome(instance, path, block_scripts, hwid_info)
-        elif browser.lower() == "firefox":
-            self.launch_firefox(instance, path, block_scripts, hwid_info)
-        elif browser.lower() == "chrome":
-            self.launch_chrome(instance, path, block_scripts, hwid_info)
+                self.launch_chrome(instance, instance_path, block_scripts, hwid_info)
+        elif b == "firefox":
+            self.launch_firefox(instance, instance_path, block_scripts, hwid_info)
         else:
-            self.launch_chrome(instance, path, block_scripts, hwid_info)
+            self.launch_chrome(instance, instance_path, block_scripts, hwid_info)
 
-    def launch_chrome(self, instance, instance_path, block_scripts, hwid_info):
+    def launch_chrome(self, instance, path, block_scripts, hwid_info):
         opt = ChromeOptions()
-        opt.add_argument("--user-data-dir=" + instance_path)
+        opt.add_argument("--user-data-dir=" + path)
         opt.add_argument("--disable-extensions")
         opt.add_argument("--ignore-certificate-errors")
+        opt.add_argument("--allow-insecure-localhost")
         opt.add_argument("--disable-blink-features=AutomationControlled")
         opt.add_experimental_option("excludeSwitches", ["enable-automation"])
         opt.add_experimental_option("useAutomationExtension", False)
@@ -62,39 +62,42 @@ class BrowserManager:
         opt.set_capability("acceptInsecureCerts", True)
         if instance.get("proxy"):
             self.apply_chrome_proxy(opt, instance["proxy"])
-        drv = None
+        driver = None
         try:
-            drv = webdriver.Chrome(options=opt)
-        except Exception as e:
-            if "extension" in str(e).lower() and "session not created" in str(e).lower():
+            driver = webdriver.Chrome(options=opt)
+        except Exception as ex:
+            if "extension" in str(ex).lower() and "session not created" in str(ex).lower():
                 opt.extensions = []
-                drv = webdriver.Chrome(options=opt)
+                driver = webdriver.Chrome(options=opt)
             else:
                 raise
-        drv.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
+        driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
             "source": "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
         })
         if block_scripts:
-            drv.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
+            driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
                 "source": self.get_block_script()
             })
-        drv.get("https://www.duckduckgo.com")
+        driver.get("https://www.duckduckgo.com")
 
-    def launch_firefox(self, instance, instance_path, block_scripts, hwid_info):
+    def launch_firefox(self, instance, path, block_scripts, hwid_info):
         opts = FirefoxOptions()
-        base_ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.6778.205 Safari/537.36"
+        ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.6778.205 Safari/537.36"
         if hwid_info:
-            base_ua += " HWID/" + hwid_info
-        opts.set_preference("general.useragent.override", base_ua)
+            ua += " HWID/" + hwid_info
+        opts.set_preference("general.useragent.override", ua)
         opts.set_capability("acceptInsecureCerts", True)
+        opts.set_preference("security.insecure_field_warning.contextual.enabled", False)
+        opts.set_preference("webdriver_accept_untrusted_certs", True)
+        opts.set_preference("webdriver_assume_untrusted_issuer", False)
         if instance.get("proxy"):
             self.apply_firefox_proxy(opts, instance["proxy"])
-        drv = webdriver.Firefox(options=opts)
+        driver = webdriver.Firefox(options=opts)
         if block_scripts:
-            drv.execute_script(self.get_block_script())
-        drv.get("https://www.duckduckgo.com")
+            driver.execute_script(self.get_block_script())
+        driver.get("https://www.duckduckgo.com")
 
-    def launch_safari(self, instance, block_scripts, hwid_info, instance_path):
+    def launch_safari(self, instance, path, block_scripts, hwid_info):
         try:
             if not SAFARI_AVAILABLE or platform.system().lower() != "darwin":
                 raise RuntimeError("Safari not available on this platform.")
@@ -105,8 +108,8 @@ class BrowserManager:
                 except:
                     pass
             drv.get("https://www.duckduckgo.com")
-        except Exception as e:
-            self.launch_chrome(instance, instance_path, block_scripts, hwid_info)
+        except Exception:
+            self.launch_chrome(instance, path, block_scripts, hwid_info)
 
     def apply_chrome_proxy(self, opt, p):
         address = p["ip"]
@@ -224,16 +227,16 @@ chrome.webRequest.onAuthRequired.addListener(
 }
         """
         d = tempfile.mkdtemp()
-        bg_file = os.path.join(d, "background.js")
-        mf_file = os.path.join(d, "manifest.json")
-        with open(bg_file, "w", encoding="utf-8") as bg:
+        bg_path = os.path.join(d, "background.js")
+        mf_path = os.path.join(d, "manifest.json")
+        with open(bg_path, "w", encoding="utf-8") as bg:
             bg.write(background_js)
-        with open(mf_file, "w", encoding="utf-8") as mf:
+        with open(mf_path, "w", encoding="utf-8") as mf:
             mf.write(manifest_json)
         zip_path = os.path.join(d, "proxy_auth_extension.zip")
-        with zipfile.ZipFile(zip_path, "w") as zipf:
-            zipf.write(bg_file, "background.js")
-            zipf.write(mf_file, "manifest.json")
+        with zipfile.ZipFile(zip_path, "w") as zf:
+            zf.write(bg_path, "background.js")
+            zf.write(mf_path, "manifest.json")
         return zip_path
 
     def get_block_script(self):
