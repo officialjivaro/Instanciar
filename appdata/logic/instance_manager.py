@@ -1,4 +1,4 @@
-# appdata/logic/instance_manager.py
+# logic/instance_manager.py
 import os
 import json
 import string
@@ -90,19 +90,56 @@ class LogicInstanceManager:
         self.data = ordered
         self.save()
 
-    def save_instance_hwid(self, old_name, new_name, proxy_enabled, ip, port, protocol, auth_enabled, user, password, hwid_enabled):
+    def save_instance_extended(
+        self,
+        old_name,
+        new_name,
+        proxy_enabled,
+        ip,
+        port,
+        protocol,
+        auth_enabled,
+        user,
+        password,
+        hwid_enabled,
+        antidetect_enabled,
+        timezone,
+        language,
+        webrtc_disabled,
+        geolocation_enabled,
+        custom_ua
+    ):
         self.save_instance(old_name, new_name, proxy_enabled, ip, port, protocol, auth_enabled, user, password)
         inst = self.get_instance(new_name)
         if not inst:
             return
         if "folder_id" not in inst:
             return
+
         if "hwid" not in inst:
             inst["hwid"] = {}
         inst["hwid"]["enabled"] = hwid_enabled
+
+        if "antidetect" not in inst:
+            inst["antidetect"] = {}
+        inst["antidetect"]["enabled"] = antidetect_enabled
+
+        if "identity" not in inst:
+            inst["identity"] = {}
+
+        if antidetect_enabled:
+            inst["identity"]["timezone"] = timezone
+            inst["identity"]["language"] = language
+            inst["identity"]["webrtc_disabled"] = webrtc_disabled
+            inst["identity"]["geolocation_enabled"] = geolocation_enabled
+            inst["identity"]["custom_user_agent"] = custom_ua
+        else:
+            if "identity" in inst:
+                inst["identity"] = {}
+
         self.save()
 
-    def launch_instance(self, name, browser_name, should_block):
+    def launch_instance(self, name, _, __):
         inst = self.get_instance(name)
         if inst:
-            self.browser.launch(inst, browser_name, should_block)
+            self.browser.launch(inst, "chrome", None)

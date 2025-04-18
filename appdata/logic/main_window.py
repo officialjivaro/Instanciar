@@ -1,5 +1,6 @@
 # appdata/logic/main_window.py
 import threading
+import webbrowser
 from appdata.gui.instance_manager import GuiInstanceManager
 from appdata.logic.install import install_instanciar
 
@@ -39,15 +40,25 @@ class MainWindowLogic:
             self.manager.delete_instance(it.text())
             self.refresh_list(list_widget)
 
-    def launch_instance_in_thread(self, list_widget, browser_combo, block_checkbox):
+    def launch_instance_in_thread(self, list_widget):
         it = list_widget.currentItem()
         if it:
-            b = browser_combo.currentText()
-            s = block_checkbox.isChecked()
-            n = it.text()
+            name = it.text()
             t = threading.Thread(
                 target=self.manager.launch_instance,
-                args=(n, b, s),
+                args=(name, "chrome", None),
                 daemon=True
             )
             t.start()
+
+    def open_commands(self):
+        webbrowser.open("https://www.jivaro.net/downloads/programs/info/instanciar")
+
+    def open_about_jivaro(self):
+        webbrowser.open("https://www.jivaro.net/")
+
+    def open_discord(self):
+        webbrowser.open("https://discord.gg/GDfX5BFGye")
+
+    def open_proxies(self):
+        webbrowser.open("https://jivaro.net/content/blog/the-best-affordable-proxy-providers")
