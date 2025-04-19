@@ -70,6 +70,7 @@ class BrowserManager:
             else:
                 raise
 
+        # Remove navigator.webdriver for stealth
         driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
             "source": "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
         })
@@ -206,15 +207,36 @@ chrome.webRequest.onAuthRequired.addListener(
         return zip_path
 
     def get_block_script(self):
-        return """
-document.addEventListener('copy', e => { e.stopImmediatePropagation(); e.preventDefault(); }, true);
-document.addEventListener('cut', e => { e.stopImmediatePropagation(); e.preventDefault(); }, true);
-document.addEventListener('paste', e => { e.stopImmediatePropagation(); e.preventDefault(); }, true);
-document.addEventListener('selectstart', e => { e.stopImmediatePropagation(); }, true);
-document.addEventListener('keydown', e => {
+        """
+        Let copy/paste/PrintScreen work locally, but hide them from the webpage.
+        We do this by simply stopping the event's propagation or spoofing its key,
+        so the site doesn't detect it as 'PrintScreen' or 'copy' etc.
+        """
+        return r"""
+(function() {
+  // Sites won't see the real 'PrintScreen'. We'll rename it so they can't detect the key.
+  document.addEventListener('keydown', function(e) {
     if (e.key === 'PrintScreen') {
-        e.stopImmediatePropagation();
-        e.preventDefault();
+      Object.defineProperty(e, 'key', {
+        value: 'Unidentified',
+        configurable: true
+      });
+      e.stopPropagation();
     }
-}, true);
-"""
+  }, true);
+
+  // For copy, cut, paste, we let the browser do them locally, 
+  // but we block the event from reaching the page's JS listeners.
+  ['copy','cut','paste'].forEach(function(evtType) {
+    document.addEventListener(evtType, function(e) {
+      e.stopPropagation();
+      // No preventDefault here, so your local copy/paste/cut still happens.
+    }, true);
+  });
+
+  // For 'selectstart', same approach
+  document.addEventListener('selectstart', function(e) {
+    e.stopPropagation();
+  }, true);
+})();
+        """
