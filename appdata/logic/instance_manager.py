@@ -1,94 +1,150 @@
-# logic/instance_manager.py
-import os
-import json
-import string
-import random
+# appdata/logic/instance_manager.py
+import os, string, random, concurrent.futures, copy
+from typing import List, Dict
+from PySide6.QtCore import QObject, Signal
 from appdata.logic.browser_manager import BrowserManager
 from appdata.logic.config_handler import ConfigHandler
+from appdata.logic.proxy_tester import ProxyTester
+from appdata.utils.io_helpers import safe_json_read, safe_json_write
 
-class LogicInstanceManager:
+
+class LogicInstanceManager(QObject):
+    statusChanged = Signal()
+    proxyTested = Signal(str, bool)
+
     def __init__(self):
+        super().__init__()
+        self.pool = concurrent.futures.ThreadPoolExecutor(max_workers=os.cpu_count() * 2)
         self.browser = BrowserManager()
-        self.config = ConfigHandler()
-        self.path = os.path.join(self.config.user_folder, "Jivaro", "Instanciar", "config")
+        self.tester = ProxyTester()
+        self.tester.result.connect(self._on_proxy_result)
+        cfg = ConfigHandler()
+        self.path = os.path.join(cfg.user_folder, "Jivaro", "Instanciar", "config")
         self.instances_file = os.path.join(self.path, "instances.json")
-        if not os.path.exists(self.path):
-            os.makedirs(self.path)
-        if not os.path.exists(self.instances_file):
-            with open(self.instances_file, "w", encoding="utf-8") as f:
-                f.write("[]")
+        self.data: List[Dict] = []
         self.load()
 
+    def _on_proxy_result(self, name, ok):
+        inst = self.get_instance(name)
+        if inst:
+            inst["proxy_ok"] = ok
+            self.save()
+            self.proxyTested.emit(name, ok)
+
+    def _kick_proxy_test(self, inst):
+        px = inst.get("proxy") or {}
+        if px.get("ip") and px.get("port"):
+            self.tester.test(inst["name"], px["ip"], px["port"])
+
     def load(self):
-        with open(self.instances_file, "r", encoding="utf-8") as f:
-            self.data = json.load(f)
+        self.data = safe_json_read(self.instances_file, [])
+        changed = False
+        for inst in self.data:
+            if not inst.get("group"):
+                inst["group"] = "Unassigned"
+                changed = True
+            self._kick_proxy_test(inst)
+        if changed:
+            self.save()
 
     def save(self):
-        with open(self.instances_file, "w", encoding="utf-8") as f:
-            json.dump(self.data, f, indent=4)
+        safe_json_write(self.instances_file, self.data)
 
     def get_instance(self, name):
-        for i in self.data:
-            if i["name"] == name:
-                return i
+        return next((i for i in self.data if i["name"] == name), None)
+
+    def _unique_name(self, base):
+        n, c = base, 1
+        while any(i["name"] == n for i in self.data):
+            n = f"{base} ({c})"
+            c += 1
+        return n
+
+    def duplicate_instance(self, name):
+        src = self.get_instance(name)
+        if not src:
+            return
+        dup = copy.deepcopy(src)
+        dup["name"] = self._unique_name(f"{name} Copy")
+        dup["folder_id"] = "".join(random.choices(string.ascii_letters + string.digits, k=20))
+        self.data.append(dup)
+        self.save()
+        self._kick_proxy_test(dup)
+        self.statusChanged.emit()
 
     def save_instance(self, old_name, new_name, proxy_enabled, ip, port, protocol, auth_enabled, user, password):
-        if old_name is not None:
+        if old_name:
             existing = self.get_instance(old_name)
-            if existing:
-                if old_name != new_name:
-                    for x in self.data:
-                        if x["name"] == new_name:
-                            return
-                existing["name"] = new_name
-                if proxy_enabled:
-                    existing["proxy"] = {
-                        "ip": ip,
-                        "port": port,
-                        "protocol": protocol,
-                        "auth": auth_enabled,
-                        "user": user,
-                        "password": password
-                    }
-                else:
-                    existing["proxy"] = None
-            else:
+            if not existing or (old_name != new_name and any(x["name"] == new_name for x in self.data)):
                 return
-        else:
-            for x in self.data:
-                if x["name"] == new_name:
-                    return
-            folder_id = ''.join(random.choices(string.ascii_letters + string.digits, k=20))
-            entry = {
-                "name": new_name,
-                "folder_id": folder_id,
-                "proxy": None
-            }
-            if proxy_enabled:
-                entry["proxy"] = {
+            existing["name"] = new_name
+            existing["proxy"] = (
+                {
                     "ip": ip,
                     "port": port,
                     "protocol": protocol,
                     "auth": auth_enabled,
                     "user": user,
-                    "password": password
+                    "password": password,
                 }
-            self.data.append(entry)
+                if proxy_enabled
+                else None
+            )
+            self._kick_proxy_test(existing)
+        else:
+            if any(x["name"] == new_name for x in self.data):
+                return
+            folder_id = "".join(random.choices(string.ascii_letters + string.digits, k=20))
+            inst = {
+                "name": new_name,
+                "folder_id": folder_id,
+                "proxy": (
+                    {
+                        "ip": ip,
+                        "port": port,
+                        "protocol": protocol,
+                        "auth": auth_enabled,
+                        "user": user,
+                        "password": password,
+                    }
+                    if proxy_enabled
+                    else None
+                ),
+                "group": "Unassigned",
+            }
+            self.data.append(inst)
+            self._kick_proxy_test(inst)
         self.save()
+        self.statusChanged.emit()
 
     def delete_instance(self, name):
         self.data = [i for i in self.data if i["name"] != name]
         self.save()
+        self.statusChanged.emit()
 
-    def rearrange_instances(self, order):
-        ordered = []
-        for n in order:
-            for i in self.data:
-                if i["name"] == n:
-                    ordered.append(i)
-                    break
-        self.data = ordered
+    def rearrange_group_instances(self, group_name: str, ordered_names: List[str]):
+        lookup = {i["name"]: i for i in self.data if i.get("group") == group_name}
+        if not lookup:
+            return
+        first_index = next(i for i, inst in enumerate(self.data) if inst.get("group") == group_name)
+        self.data = [inst for inst in self.data if inst.get("group") != group_name]
+        ordered_instances = [lookup[n] for n in ordered_names if n in lookup]
+        for idx, inst in enumerate(ordered_instances):
+            self.data.insert(first_index + idx, inst)
         self.save()
+        self.statusChanged.emit()
+
+    def save_instance_group(self, instance_name, group_name):
+        inst = self.get_instance(instance_name)
+        if inst:
+            inst["group"] = group_name or "Unassigned"
+            self.save()
+            self.statusChanged.emit()
+
+    def launch_instance(self, name):
+        inst = self.get_instance(name)
+        if inst:
+            self.pool.submit(self.browser.launch, inst)
 
     def save_instance_extended(
         self,
@@ -107,39 +163,31 @@ class LogicInstanceManager:
         language,
         webrtc_disabled,
         geolocation_enabled,
-        custom_ua
+        custom_ua,
+        landing_page,
     ):
-        self.save_instance(old_name, new_name, proxy_enabled, ip, port, protocol, auth_enabled, user, password)
+        self.save_instance(
+            old_name,
+            new_name,
+            proxy_enabled,
+            ip,
+            port,
+            protocol,
+            auth_enabled,
+            user,
+            password,
+        )
         inst = self.get_instance(new_name)
         if not inst:
             return
-        if "folder_id" not in inst:
-            return
-
-        if "hwid" not in inst:
-            inst["hwid"] = {}
-        inst["hwid"]["enabled"] = hwid_enabled
-
-        if "antidetect" not in inst:
-            inst["antidetect"] = {}
-        inst["antidetect"]["enabled"] = antidetect_enabled
-
-        if "identity" not in inst:
-            inst["identity"] = {}
-
-        if antidetect_enabled:
-            inst["identity"]["timezone"] = timezone
-            inst["identity"]["language"] = language
-            inst["identity"]["webrtc_disabled"] = webrtc_disabled
-            inst["identity"]["geolocation_enabled"] = geolocation_enabled
-            inst["identity"]["custom_user_agent"] = custom_ua
-        else:
-            if "identity" in inst:
-                inst["identity"] = {}
-
+        inst["landing_page"] = landing_page or "https://www.duckduckgo.com"
+        inst.setdefault("hwid", {})["enabled"] = hwid_enabled
+        inst.setdefault("antidetect", {})["enabled"] = antidetect_enabled
+        ident = inst.setdefault("identity", {})
+        ident["timezone"] = timezone
+        ident["language"] = language
+        ident["webrtc_disabled"] = webrtc_disabled
+        ident["geolocation_enabled"] = geolocation_enabled
+        ident["custom_user_agent"] = custom_ua
         self.save()
-
-    def launch_instance(self, name, _, __):
-        inst = self.get_instance(name)
-        if inst:
-            self.browser.launch(inst, "chrome", None)
+        self.statusChanged.emit()

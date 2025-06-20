@@ -1,50 +1,44 @@
 # instanciar.py
-import sys
-import re
-import urllib.request
+import os, sys, re, urllib.request, warnings
+os.environ.setdefault("QTWEBENGINE_DISABLE_GPU", "1")
+os.environ.setdefault("QTWEBENGINE_DISABLE_GPU_THREAD", "1")
+os.environ.setdefault("QTWEBENGINE_CHROMIUM_FLAGS", "--disable-gpu --disable-gpu-compositing --disable-features=WebGPU,Accelerated2dCanvas")
+os.environ.setdefault("QT_OPENGL", "software")
+os.environ.setdefault("QT_LOGGING_RULES", "qt.webenginecontext.debug=false")
+
 from PySide6.QtWidgets import QApplication, QMessageBox
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtCore import QUrl
 from appdata.gui.main_window import MainWindow
 from appdata.version.version import VERSION as LOCAL_VERSION
+from appdata.utils.version_parser import parse_version_string
 
-def check_for_updates():
+
+def _remote_version():
     url = "https://raw.githubusercontent.com/officialjivaro/Instanciar/main/appdata/version/version.py"
     try:
-        with urllib.request.urlopen(url) as response:
-            data = response.read().decode("utf-8")
-        match = re.search(r'VERSION\s*=\s*[\'"]([^\'"]+)[\'"]', data)
-        if match:
-            remote_str = match.group(1).strip()
-            local_str = LOCAL_VERSION.strip()
-            local_num = local_str.lower().replace("v","")
-            remote_num = remote_str.lower().replace("v","")
-            try:
-                if float(local_num) < float(remote_num):
-                    app = QApplication.instance()
-                    if not app:
-                        app = QApplication(sys.argv)
-                    box = QMessageBox()
-                    box.setWindowTitle("Update Available")
-                    box.setText(
-                        f"A newer version ({remote_str}) is available. You have {local_str}.\n"
-                        "Do you want to download it now?"
-                    )
-                    box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
-                    result = box.exec()
-                    if result == QMessageBox.Yes:
-                        QDesktopServices.openUrl(QUrl("https://jivaro.net/downloads/programs/info/instanciar"))
-            except ValueError:
-                pass
+        with urllib.request.urlopen(url) as r:
+            m = re.search(r'VERSION\s*=\s*[\'"]([^\'"]+)[\'"]', r.read().decode())
+            return m.group(1).strip() if m else None
     except Exception:
-        pass
+        return None
+
 
 def main():
+    warnings.filterwarnings("ignore")
     app = QApplication(sys.argv)
-    check_for_updates()
-    window = MainWindow()
-    window.show()
+    remote = _remote_version()
+    local = LOCAL_VERSION.strip()
+    if remote and parse_version_string(remote) > parse_version_string(local):
+        box = QMessageBox()
+        box.setWindowTitle("Update Available")
+        box.setText(f"A newer version ({remote}) is available. You have {local}.\nDownload now?")
+        box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+        if box.exec() == QMessageBox.Yes:
+            QDesktopServices.openUrl(QUrl("https://jivaro.net/downloads/programs/info/instanciar"))
+    MainWindow().show()
     sys.exit(app.exec())
+
 
 if __name__ == "__main__":
     main()

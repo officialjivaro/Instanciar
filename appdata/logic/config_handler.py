@@ -1,4 +1,4 @@
-# logic/config_handler.py
+# appdata/logic/config_handler.py
 import os
 import configparser
 
