@@ -1,8 +1,6 @@
 # Instanciar.spec
 from PyInstaller.utils.hooks import collect_submodules, collect_data_files
-import PySide6, os
 
-block_cipher = None
 pyside_plugins = collect_data_files(
     "PySide6",
     includes=[
@@ -12,15 +10,17 @@ pyside_plugins = collect_data_files(
     ],
 )
 
+selenium_datas = collect_data_files("selenium")
+selenium_hidden = collect_submodules("selenium")
+
 a = Analysis(
     ["Instanciar.py"],
     pathex=["."],
     binaries=[],
-    datas=[("appdata/media/icon.ico", "appdata/media")] + pyside_plugins,
-    hiddenimports=collect_submodules("PySide6"),
+    datas=[("appdata/media/icon.ico", "appdata/media")] + pyside_plugins + selenium_datas,
+    hiddenimports=collect_submodules("PySide6") + selenium_hidden,
     runtime_hooks=["pyi_hooks/qt_plugins_path_hook.py"],
     hooksconfig={},
-    cipher=block_cipher,
     noarchive=False,
     optimize=2,
 )

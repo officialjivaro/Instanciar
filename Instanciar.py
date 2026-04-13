@@ -1,10 +1,8 @@
-# instanciar.py
+# Instanciar.py
 import os, sys, re, urllib.request, warnings
-os.environ.setdefault("QTWEBENGINE_DISABLE_GPU", "1")
-os.environ.setdefault("QTWEBENGINE_DISABLE_GPU_THREAD", "1")
-os.environ.setdefault("QTWEBENGINE_CHROMIUM_FLAGS", "--disable-gpu --disable-gpu-compositing --disable-features=WebGPU,Accelerated2dCanvas")
+
+# why: keep software OpenGL because it affects general Qt rendering and is not only tied to the removed WebEngine ad view.
 os.environ.setdefault("QT_OPENGL", "software")
-os.environ.setdefault("QT_LOGGING_RULES", "qt.webenginecontext.debug=false")
 
 from PySide6.QtWidgets import QApplication, QMessageBox
 from PySide6.QtGui import QDesktopServices
@@ -36,7 +34,9 @@ def main():
         box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
         if box.exec() == QMessageBox.Yes:
             QDesktopServices.openUrl(QUrl("https://jivaro.net/downloads/programs/info/instanciar"))
-    MainWindow().show()
+
+    window = MainWindow()
+    window.show()
     sys.exit(app.exec())
 
 

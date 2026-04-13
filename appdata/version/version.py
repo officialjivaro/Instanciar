@@ -1,2 +1,2 @@
 # appdata/version/version.py
-VERSION = "0.09"
+VERSION = "0.10"

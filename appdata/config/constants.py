@@ -29,7 +29,7 @@ LANGUAGES = [
     "Finnish (fi)","Polish (pl)","Czech (cs)","Filipino (fil)","Urdu (ur)"
 ]
 
-COMMON_USER_AGENTS = [
+LEGACY_COMMON_USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126.0.6478.57 Safari/537.36",
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/537.36 Chrome/126.0.6478.57 Safari/537.36",
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/126.0.6478.57 Safari/537.36",
@@ -37,7 +37,10 @@ COMMON_USER_AGENTS = [
     "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0) AppleWebKit/605.1.15 CriOS/126.0.6478.57 Mobile/15E148 Safari/604.1"
 ]
 
-DEFAULT_UA = COMMON_USER_AGENTS[0]
+# note: kept for backward compatibility with older saved instances or older imports.
+COMMON_USER_AGENTS = LEGACY_COMMON_USER_AGENTS[:]
+
+DEFAULT_UA = LEGACY_COMMON_USER_AGENTS[0]
 
 TIME_ZONE_MAP = {"America/Texas": "America/Chicago"}
 

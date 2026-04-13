@@ -1,9 +1,11 @@
 # appdata/gui/widgets/instance_tree.py
 from PySide6.QtWidgets import QTreeWidget, QAbstractItemView
-from PySide6.QtCore import Qt, QMimeData
+from PySide6.QtCore import Qt
 
 
 class InstanceTree(QTreeWidget):
+    """Tree widget used for group / instance browsing and drag-drop reordering."""
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setHeaderLabels(["Groups & Instances", "Proxy Status"])
@@ -13,18 +15,19 @@ class InstanceTree(QTreeWidget):
         self.setDefaultDropAction(Qt.MoveAction)
         self.setDragDropMode(QAbstractItemView.InternalMove)
 
-    def resizeEvent(self, ev):
-        super().resizeEvent(ev)
-        w = self.viewport().width()
-        self.setColumnWidth(0, int(w * 0.80))
-        self.setColumnWidth(1, w - int(w * 0.80))
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        width = self.viewport().width()
+        primary = int(width * 0.80)
+        self.setColumnWidth(0, primary)
+        self.setColumnWidth(1, width - primary)
 
     def mimeData(self, items):
-        md = super().mimeData(items)
+        mime = super().mimeData(items)
         info = items[0].data(0, Qt.UserRole) or {}
         if info.get("type") == "instance":
-            md.setText(info["name"])
-        return md
+            mime.setText(info["name"])
+        return mime
 
     def _is_group(self, item):
         return (item.data(0, Qt.UserRole) or {}).get("type") == "group"
@@ -32,40 +35,54 @@ class InstanceTree(QTreeWidget):
     def _is_instance(self, item):
         return (item.data(0, Qt.UserRole) or {}).get("type") == "instance"
 
-    def dragMoveEvent(self, e):
-        tgt = self.itemAt(e.pos())
-        pos = self.dropIndicatorPosition()
+    def _group_name(self, item):
+        info = item.data(0, Qt.UserRole) or {}
+        return info.get("name", item.text(0))
+
+    def dragMoveEvent(self, event):
+        target = self.itemAt(event.pos())
+        position = self.dropIndicatorPosition()
         accept = False
-        if tgt:
-            if pos == QAbstractItemView.OnItem and self._is_group(tgt):
+
+        if target:
+            if position == QAbstractItemView.OnItem and self._is_group(target):
                 accept = True
-                self.setCurrentItem(tgt)
-            elif pos in (QAbstractItemView.AboveItem, QAbstractItemView.BelowItem) and self._is_instance(tgt):
+                self.setCurrentItem(target)
+            elif position in (QAbstractItemView.AboveItem, QAbstractItemView.BelowItem) and self._is_instance(target):
                 accept = True
         else:
-            if pos == QAbstractItemView.OnViewport:
+            if position == QAbstractItemView.OnViewport:
                 accept = True
-        e.acceptProposedAction() if accept else e.ignore()
 
-    def dropEvent(self, e):
-        tgt = self.itemAt(e.pos())
-        pos = self.dropIndicatorPosition()
-        if tgt and pos == QAbstractItemView.OnItem and self._is_group(tgt):
-            mw = self.window()
-            if hasattr(mw, "logic"):
-                mw.logic.manager.save_instance_group(e.mimeData().text(), tgt.text(0))
-                mw.logic.refresh_tree(self)
+        event.acceptProposedAction() if accept else event.ignore()
+
+    def dropEvent(self, event):
+        target = self.itemAt(event.pos())
+        position = self.dropIndicatorPosition()
+
+        if target and position == QAbstractItemView.OnItem and self._is_group(target):
+            main_window = self.window()
+            if hasattr(main_window, "logic"):
+                main_window.logic.manager.save_instance_group(event.mimeData().text(), self._group_name(target))
+                main_window.logic.refresh_tree(self)
+                if hasattr(main_window, "_refresh_selection_ui"):
+                    main_window._refresh_selection_ui()
             return
-        super().dropEvent(e)
+
+        super().dropEvent(event)
+
         per_group = {}
-        for gi in range(self.topLevelItemCount()):
-            g_item = self.topLevelItem(gi)
-            g_name = g_item.text(0)
-            per_group[g_name] = [
-                g_item.child(ci).data(0, Qt.UserRole)["name"]
-                for ci in range(g_item.childCount())
+        for group_index in range(self.topLevelItemCount()):
+            group_item = self.topLevelItem(group_index)
+            group_name = self._group_name(group_item)
+            per_group[group_name] = [
+                group_item.child(child_index).data(0, Qt.UserRole)["name"]
+                for child_index in range(group_item.childCount())
             ]
-        mw = self.window()
-        if hasattr(mw, "logic"):
-            for g, order in per_group.items():
-                mw.logic.manager.rearrange_group_instances(g, order)
+
+        main_window = self.window()
+        if hasattr(main_window, "logic"):
+            for group_name, order in per_group.items():
+                main_window.logic.manager.rearrange_group_instances(group_name, order)
+            if hasattr(main_window, "_refresh_selection_ui"):
+                main_window._refresh_selection_ui()
