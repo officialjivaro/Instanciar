@@ -1,42 +1,27 @@
 # Instanciar.py
-import os, sys, re, urllib.request, warnings
+import os
+import sys
+import warnings
 
-# why: keep software OpenGL because it affects general Qt rendering and is not only tied to the removed WebEngine ad view.
+# Keep software OpenGL because it improves general Qt stability on some PCs.
 os.environ.setdefault("QT_OPENGL", "software")
 
-from PySide6.QtWidgets import QApplication, QMessageBox
-from PySide6.QtGui import QDesktopServices
-from PySide6.QtCore import QUrl
+from PySide6.QtCore import QTimer
+from PySide6.QtWidgets import QApplication
+
 from appdata.gui.main_window import MainWindow
-from appdata.version.version import VERSION as LOCAL_VERSION
-from appdata.utils.version_parser import parse_version_string
-
-
-def _remote_version():
-    url = "https://raw.githubusercontent.com/officialjivaro/Instanciar/main/appdata/version/version.py"
-    try:
-        with urllib.request.urlopen(url) as r:
-            m = re.search(r'VERSION\s*=\s*[\'"]([^\'"]+)[\'"]', r.read().decode())
-            return m.group(1).strip() if m else None
-    except Exception:
-        return None
 
 
 def main():
     warnings.filterwarnings("ignore")
     app = QApplication(sys.argv)
-    remote = _remote_version()
-    local = LOCAL_VERSION.strip()
-    if remote and parse_version_string(remote) > parse_version_string(local):
-        box = QMessageBox()
-        box.setWindowTitle("Update Available")
-        box.setText(f"A newer version ({remote}) is available. You have {local}.\nDownload now?")
-        box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
-        if box.exec() == QMessageBox.Yes:
-            QDesktopServices.openUrl(QUrl("https://jivaro.net/downloads/programs/info/instanciar"))
 
     window = MainWindow()
     window.show()
+
+    # Show after the dashboard appears so GitHub loading never blocks startup.
+    QTimer.singleShot(650, window.show_whats_new_if_needed)
+
     sys.exit(app.exec())
 
 
